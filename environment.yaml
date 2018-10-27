@@ -1,0 +1,9 @@
+name: reimage-env
+channels:
+  - conda-forge
+dependencies:
+  - python=3.6
+  - bokeh
+  - numpy
+  - pillow
+  - requests
