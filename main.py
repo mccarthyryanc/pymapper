@@ -15,12 +15,22 @@ from bokeh.models.widgets import Button, TextInput
 from bokeh.plotting import figure, curdoc
 
 _url = 'https://i.redd.it/kri5p84v18s11.jpg'
+new_cmap = None
+curr_image = None
+c_bins = 256
+x_bins = 300
+y_bins = 800
+c_flag = True
+white_threshold = 20
+img = np.ones((y_bins,x_bins))*np.nan
+cmap_data = np.array((c_bins, 3), dtype=np.int)
+new_raster = np.array((y_bins, x_bins), dtype=np.float)
 
 left = figure(plot_width=800, plot_height=800,
               x_range=(0, 10), y_range=(0, 10),
               tools='pan,wheel_zoom,reset,hover,box_select')
 right = figure(plot_width=800, plot_height=800,
-               x_range=(0, 10), y_range=(0, 10))
+               x_range=(0, x_bins), y_range=(0, y_bins))
 url_input = TextInput(value=_url)
 cmap_min_input = TextInput(value='-78.8', title='min')
 cmap_max_input = TextInput(value='-40.0', title='max')
@@ -29,23 +39,6 @@ cmap_max_c_pos = TextInput(value='', title='Max Color Pos')
 get_image = Button(label="Import", button_type="success")
 make_image = Button(label="ReBuild", button_type="success")
 output_image = Button(label="Export", button_type="success")
-
-line_src = ColumnDataSource({'x': [[]], 'y': [[]]})
-box_src = ColumnDataSource({'x': [], 'y': [], 'width': [], 'height': []})
-
-new_cmap = None
-curr_image = None
-c_bins = 100
-x_bins = 400
-y_bins = 800
-
-img = np.empty((y_bins,x_bins), dtype=np.uint32)
-view = img.view(dtype=np.uint8).reshape((y_bins, x_bins, 4))
-
-c_flag = True
-
-cmap_data = np.array((c_bins, 3), dtype=np.int)
-new_raster = np.array((y_bins, x_bins), dtype=np.float)
 
 def line(t,xs,ys):  
     x1,x2 = xs
@@ -85,22 +78,17 @@ def update_image():
     left.y_range.end = 0
 
 def update_plot():
-    global right, img, view
+    global right, img
     print('updating right plot')
-    right.image_rgba(image=[img], x=0, y=0, dw=x_bins, dh=y_bins)
+    right.image(image=[img], x=0, y=0, dw=x_bins, dh=y_bins,
+                palette="Viridis256")
 
-# def set_cmap(event):
-#     """
-#     Function to set a cmap bound after a DoubleTap event on the
-#     image plot
-#     """
-#     global c_min, c_max
 
 def build_image(event):
     """
     Function to build a new image after rectangular selection event 
     """
-    global new_cmap, curr_image, view, img, right
+    global new_cmap, curr_image, img, right
 
     # First get the image pix bounds
     x0 = event.__dict__['geometry']['x0']
@@ -110,25 +98,20 @@ def build_image(event):
     
     print(f'building : {x0}-{x1}, {y0}-{y1}')
 
-    colors = new_cmap.keys()
-    values = new_cmap.values()
-
     for j,img_j in enumerate(np.linspace(x0,x1,x_bins)):
         for i,img_i in enumerate(np.linspace(y0,y1,y_bins)):
             # print(f'looking at pixel({i},{j})')
             # get the pixel value at i,j pixel
             c = curr_image.getpixel((int(img_j),int(img_i)))
             # get the closest non-white color
-            if c == (255,255,255):
-                value = (255,255,255,0)
+            if color_dist_sq((255,255,255),c) < white_threshold:
+                value = np.nan
             else:
-                nearest = min(colors, key=lambda x: color_dist_sq(x, c))
-                value = (nearest[0], nearest[1], nearest[2], 255)
+                nearest = min(new_cmap.keys(), key=lambda x: color_dist_sq(x,c))
+                value = new_cmap[nearest]
             # print(f'got value: {value}')
-            view[i,j,0] = value[0]
-            view[i,j,1] = value[1]
-            view[i,j,2] = value[2]
-            view[i,j,3] = value[3]
+            img[i,j] = value
+
     print('finished rebuilding image')
     update_plot()
 
@@ -194,7 +177,6 @@ def set_colorbar(event):
 left.on_event(events.DoubleTap, set_colorbar)
 left.on_event(events.SelectionGeometry, build_image)
 get_image.on_click(update_image)
-make_image.on_click(get_cmap)
 
 # init plot
 update_image()
@@ -203,8 +185,7 @@ update_plot()
 l_layout = column([row([get_image, url_input]),
                    row([cmap_min_input, cmap_max_input]),
                    row([cmap_min_c_pos, cmap_max_c_pos]),
-                   left,
-                   make_image])
+                   left])
 r_layout = column([Spacer(sizing_mode='stretch_both'),
                    right,
                    output_image])
