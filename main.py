@@ -22,8 +22,8 @@ left = figure(plot_width=800, plot_height=800,
 right = figure(plot_width=800, plot_height=800,
                x_range=(0, 10), y_range=(0, 10))
 url_input = TextInput(value=_url)
-cmap_min_input = TextInput(value='-1', title='min')
-cmap_max_input = TextInput(value='-1', title='max')
+cmap_min_input = TextInput(value='-78.8', title='min')
+cmap_max_input = TextInput(value='-40.0', title='max')
 cmap_min_c_pos = TextInput(value='', title='Min Color Pos')
 cmap_max_c_pos = TextInput(value='', title='Max Color Pos')
 get_image = Button(label="Import", button_type="success")
@@ -71,8 +71,10 @@ def color_dist_sq(x,y):
     """
     return (x[0]-y[0])**2 + (x[1]-y[1])**2 + (x[2]-y[2])**2
 
-def update_plot():
+def update_image():
     global left, url_input
+
+    print('updating left image')
     
     width,height = get_image_size(url_input.value)
     left.image_url(url=[url_input.value], x=[0], y=[0],
@@ -81,6 +83,11 @@ def update_plot():
     left.x_range.end = width
     left.y_range.start = -height
     left.y_range.end = 0
+
+def update_plot():
+    global right, img, view
+    print('updating right plot')
+    right.image_rgba(image=[img], x=0, y=0, dw=x_bins, dh=y_bins)
 
 # def set_cmap(event):
 #     """
@@ -96,31 +103,34 @@ def build_image(event):
     global new_cmap, curr_image, view, img, right
 
     # First get the image pix bounds
-    print(f'build image event: {event.__dict__}')
     x0 = event.__dict__['geometry']['x0']
     x1 = event.__dict__['geometry']['x1']
     y0 = abs(event.__dict__['geometry']['y0'])
     y1 = abs(event.__dict__['geometry']['y1'])
+    
+    print(f'building : {x0}-{x1}, {y0}-{y1}')
 
     colors = new_cmap.keys()
     values = new_cmap.values()
 
-    for j in np.arange(x0,x1,x_bins):
-        for i in np.arange(y0,y1,y_bins):
+    for j,img_j in enumerate(np.linspace(x0,x1,x_bins)):
+        for i,img_i in enumerate(np.linspace(y0,y1,y_bins)):
+            # print(f'looking at pixel({i},{j})')
             # get the pixel value at i,j pixel
-            c = curr_image.getpixel((i,j))
+            c = curr_image.getpixel((int(img_j),int(img_i)))
             # get the closest non-white color
             if c == (255,255,255):
                 value = (255,255,255,0)
             else:
                 nearest = min(colors, key=lambda x: color_dist_sq(x, c))
                 value = (nearest[0], nearest[1], nearest[2], 255)
+            # print(f'got value: {value}')
             view[i,j,0] = value[0]
             view[i,j,1] = value[1]
             view[i,j,2] = value[2]
             view[i,j,3] = value[3]
-
-    right.image_rgba(image=[img], x=0, y=0, dw=x_bins, dh=y_bins)
+    print('finished rebuilding image')
+    update_plot()
 
 def get_cmap():
     """
@@ -128,6 +138,8 @@ def get_cmap():
     pixels to build a cmap.
     """
     global curr_image, c_min, c_max, cmap_min_c_pos, cmap_max_c_pos, new_cmap
+
+    print(f'building new color map')
 
     c_min = float(cmap_min_input.value)
     c_max = float(cmap_max_input.value)
@@ -145,13 +157,16 @@ def get_cmap():
     for pix, value in zip(cmap_pix, np.arange(c_min, c_max+step, step)):
         new_cmap[curr_image.getpixel(pix)] = value
 
-    print(f'New cmap: {new_cmap}')
-
 def set_colorbar(event):
     """
     Set the min/max color values after a double-click event.
     """
     global c_flag, curr_image, cmap_min_c_pos, cmap_max_c_pos
+
+    if c_flag:
+        print('setting colorbar start location')
+    else:
+        print('setting colorbar end location')
 
     # get the x,y coords of the event
     x = int(event.__dict__['x'])
@@ -165,44 +180,26 @@ def set_colorbar(event):
         get_cmap()
     c_flag = not c_flag
 
-def print_event(attributes=[]):
-    """
-    Function that returns a Python callback to pretty print the events.
-    """
-    def python_callback(event):
-        cls_name = event.__class__.__name__
-        attrs = ', '.join(['{attr}={val}'.format(attr=attr,val=event.__dict__[attr])
-                       for attr in attributes])
-        print('{cls_name}({attrs})'.format(cls_name=cls_name, attrs=attrs))
-    return python_callback
+# def print_event(attributes=[]):
+#     """
+#     Function that returns a Python callback to pretty print the events.
+#     """
+#     def python_callback(event):
+#         cls_name = event.__class__.__name__
+#         attrs = ', '.join(['{attr}={val}'.format(attr=attr,val=event.__dict__[attr])
+#                        for attr in attributes])
+#         print('{cls_name}({attrs})'.format(cls_name=cls_name, attrs=attrs))
+#     return python_callback
 
-# def set_cmap_event():
-
-
-left.on_event(events.DoubleTap,
-              set_colorbar)
-left.on_event(events.SelectionGeometry,
-              build_image)
-get_image.on_click(update_plot)
+left.on_event(events.DoubleTap, set_colorbar)
+left.on_event(events.SelectionGeometry, build_image)
+get_image.on_click(update_image)
 make_image.on_click(get_cmap)
 
 # init plot
+update_image()
 update_plot()
 
-# draw_cmap = PolyDrawTool(renderers=[cmap_line])
-# renderer = left.rect('x', 'y', 'width', 'height', source=box_src, alpha=0.1)
-# draw_box = BoxEditTool(renderers=[renderer], empty_value=1)
-# left.add_tools(draw_cmap, draw_box)
-
-# p.toolbar.active_drag = draw_tool
-
-
-
-# l = layout([
-#     [get_image, url_input],
-#     [left, right],
-#     [Spacer(sizing_mode='scale_width'), output_image]
-#     ])
 l_layout = column([row([get_image, url_input]),
                    row([cmap_min_input, cmap_max_input]),
                    row([cmap_min_c_pos, cmap_max_c_pos]),
